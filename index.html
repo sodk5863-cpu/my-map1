@@ -1,0 +1,139 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная карта со слоями</title>
+    
+    <!-- Подключение API Яндекс Карт с вашим ключом -->
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=0633b353-067a-458f-b435-1eceee88be11&lang=ru_RU" type="text/javascript"></script>
+
+    <style>
+        /* Растягиваем карту на весь экран */
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #f0f0f0; }
+        #map { width: 100vw; height: 100vh; }
+
+        /* Панель управления слоями */
+        .menu {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-width: 220px;
+        }
+
+        .menu h4 { margin: 0 0 12px 0; font-size: 15px; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .menu label { display: flex; align-items: center; margin: 10px 0; cursor: pointer; font-size: 14px; color: #34495e; }
+        .menu input { margin-right: 12px; width: 16px; height: 16px; cursor: pointer; }
+        
+        /* Индикатор загрузки */
+        #loader {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 2000; font-family: sans-serif; background: white; padding: 20px;
+            border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">Загрузка карты...</div>
+    <div id="map"></div>
+
+    <div class="menu">
+        <h4>Фильтр слоев:</h4>
+        <label><input type="checkbox" checked onchange="toggleFilter('склад', this.checked)"> Склады (#склад)</label>
+        <label><input type="checkbox" checked onchange="checked onchange="toggleFilter('офис', this.checked)"> Офисы (#офис)</label>
+        <label><input type="checkbox" checked onchange="toggleFilter('доставка', this.checked)"> Доставка (#доставка)</label>
+        <label><input type="checkbox" checked onchange="toggleFilter('other', this.checked)"> Без тегов (остальные)</label>
+    </div>
+
+    <script type="text/javascript">
+        // ID вашей карты b4cba134...
+        const MAP_ID = 'b4cba13476bd0bf4791324ef8079b6dcd913a66e6f4ff2345014115a983f31ec';
+        
+        let myMap;
+        
+        // Создаем коллекции (группы) для объектов
+        const groups = {
+            'склад': new ymaps.GeoObjectCollection(),
+            'офис': new ymaps.GeoObjectCollection(),
+            'доставка': new ymaps.GeoObjectCollection(),
+            'other': new ymaps.GeoObjectCollection()
+        };
+
+        ymaps.ready(init);
+
+        function init() {
+            // Инициализация карты
+            myMap = new ymaps.Map('map', {
+                center: [55.755814, 37.617635],
+                zoom: 10,
+                controls: ['zoomControl', 'typeSelector', 'fullscreenControl']
+            }, {
+                searchControlProvider: 'yandex#search'
+            });
+
+            // Скрываем надпись загрузки
+            document.getElementById('loader').style.display = 'none';
+
+            // Добавляем все коллекции на карту
+            for (let key in groups) {
+                myMap.geoObjects.add(groups[key]);
+            }
+
+            // Загружаем данные из Конструктора. Параметр _t исключает кэширование.
+            const kmlUrl = `https://api-maps.yandex.ru/services/constructor/1.0/kml/?um=constructor%3A${MAP_ID}&_t=${Date.now()}`;
+
+            ymaps.geoXml.load(kmlUrl).then(function (res) {
+                
+                // Функция для разбора объектов (рекурсивная для обхода папок)
+                function processObject(obj) {
+                    if (obj.each) {
+                        obj.each(processObject);
+                    } else {
+                        const name = obj.properties.get('name') || '';
+                        const desc = obj.properties.get('description') || '';
+                        const fullText = (name + " " + desc).toLowerCase();
+
+                        if (fullText.includes('#склад')) {
+                            groups['склад'].add(obj);
+                        } else if (fullText.includes('#офис')) {
+                            groups['офис'].add(obj);
+                        } else if (fullText.includes('#доставка')) {
+                            groups['доставка'].add(obj);
+                        } else {
+                            groups['other'].add(obj);
+                        }
+                    }
+                }
+
+                processObject(res.geoObjects);
+
+                // Автоматически масштабируем карту, чтобы увидеть все метки
+                if (res.geoObjects.getBounds()) {
+                    myMap.setBounds(res.geoObjects.getBounds(), {
+                        checkZoomRange: true,
+                        duration: 500
+                    });
+                }
+                
+            }).catch(function (err) {
+                console.error('Ошибка загрузки данных:', err);
+                alert('Не удалось загрузить данные карты. Если вы открываете файл просто с компьютера, браузер может блокировать загрузку из соображений безопасности. Попробуйте загрузить файл на любой хостинг.');
+            });
+        }
+
+        // Функция включения/выключения групп
+        function toggleFilter(type, isVisible) {
+            if (groups[type]) {
+                groups[type].options.set('visible', isVisible);
+            }
+        }
+    </script>
+</body>
+</html>
